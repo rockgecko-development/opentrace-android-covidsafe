@@ -1,21 +1,20 @@
-package io.bluetrace.opentrace.streetpass
+package au.gov.health.covidsafe.streetpass
 
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.os.Build
 import android.os.Handler
-import io.bluetrace.opentrace.Utils
-import io.bluetrace.opentrace.bluetooth.BLEScanner
-import io.bluetrace.opentrace.logging.CentralLog
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.infiniteScanning
-import io.bluetrace.opentrace.status.Status
+import au.gov.health.covidsafe.Utils
+import au.gov.health.covidsafe.bluetooth.BLEScanner
+import au.gov.health.covidsafe.logging.CentralLog
+import au.gov.health.covidsafe.status.Status
 import kotlin.properties.Delegates
 
 class StreetPassScanner constructor(
-    context: Context,
-    serviceUUIDString: String,
-    private val scanDurationInMillis: Long
+        context: Context,
+        serviceUUIDString: String,
+        private val scanDurationInMillis: Long
 ) {
 
     private var scanner: BLEScanner by Delegates.notNull()
@@ -27,42 +26,35 @@ class StreetPassScanner constructor(
 
     var scannerCount = 0
 
-    val scanCallback = BleScanCallback()
-
-//    var discoverer: BLEDiscoverer
+    private val scanCallback = BleScanCallback()
 
     init {
         scanner = BLEScanner(context, serviceUUIDString, 0)
         this.context = context
-//        discoverer = BLEDiscoverer(context, serviceUUIDString)
     }
 
     fun startScan() {
 
-        var statusRecord = Status("Scanning Started")
+        val statusRecord = Status("Scanning Started")
         Utils.broadcastStatusReceived(context, statusRecord)
 
         scanner.startScan(scanCallback)
         scannerCount++
 
-        if (!infiniteScanning) {
-            handler.postDelayed(
+        handler.postDelayed(
                 { stopScan() }
                 , scanDurationInMillis)
-        }
+
 
         CentralLog.d(TAG, "scanning started")
-//        discoverer.startDiscovery()
     }
 
     fun stopScan() {
-        //only stop if scanning was successful - kinda.
         if (scannerCount > 0) {
-            var statusRecord = Status("Scanning Stopped")
+            val statusRecord = Status("Scanning Stopped")
             Utils.broadcastStatusReceived(context, statusRecord)
             scannerCount--
             scanner.stopScan()
-//        discoverer.cancelDiscovery()
         }
     }
 
@@ -78,7 +70,7 @@ class StreetPassScanner constructor(
 
             scanResult?.let { result ->
                 val device = result.device
-                var rssi = result.rssi // get RSSI value
+                val rssi = result.rssi // get RSSI value
 
                 var txPower: Int? = null
 
@@ -89,13 +81,13 @@ class StreetPassScanner constructor(
                     }
                 }
 
-                var manuData: ByteArray =
-                    scanResult.scanRecord?.getManufacturerSpecificData(1023) ?: "N.A".toByteArray()
-                var manuString = String(manuData, Charsets.UTF_8)
+                val manuData: ByteArray = scanResult.scanRecord?.getManufacturerSpecificData(1023)
+                        ?: "N.A".toByteArray()
+                val manuString = String(manuData, Charsets.UTF_8)
 
-                var connectable = ConnectablePeripheral(manuString, txPower, rssi)
+                val connectable = ConnectablePeripheral(txPower, rssi)
 
-                CentralLog.i(TAG, "Scanned: ${manuString} - ${device.address}")
+                CentralLog.i(TAG, "Scanned: $manuString - ${device.address}")
 
                 Utils.broadcastDeviceScanned(context, device, connectable)
             }

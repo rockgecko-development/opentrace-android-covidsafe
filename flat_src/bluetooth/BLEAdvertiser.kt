@@ -1,4 +1,4 @@
-package io.bluetrace.opentrace.bluetooth
+package au.gov.health.covidsafe.bluetooth
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.le.AdvertiseCallback
@@ -7,15 +7,14 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.os.Handler
 import android.os.ParcelUuid
-import io.bluetrace.opentrace.logging.CentralLog
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.infiniteAdvertising
+import au.gov.health.covidsafe.logging.CentralLog
 import java.util.*
 
 
-class BLEAdvertiser constructor(val serviceUUID: String) {
+class BLEAdvertiser constructor(serviceUUID: String) {
 
     private var advertiser: BluetoothLeAdvertiser? =
-        BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
+            BluetoothAdapter.getDefaultAdapter().bluetoothLeAdvertiser
     private val TAG = "BLEAdvertiser"
     private var charLength = 3
     private var callback: AdvertiseCallback = object : AdvertiseCallback() {
@@ -29,7 +28,7 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
         override fun onStartFailure(errorCode: Int) {
             super.onStartFailure(errorCode)
 
-            var reason: String
+            val reason: String
 
             when (errorCode) {
                 ADVERTISE_FAILED_ALREADY_STARTED -> {
@@ -62,20 +61,20 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
             CentralLog.d(TAG, "Advertising onStartFailure: $errorCode - $reason")
         }
     }
-    val pUuid = ParcelUuid(UUID.fromString(serviceUUID))
+    private val pUuid = ParcelUuid(UUID.fromString(serviceUUID))
 
-    val settings = AdvertiseSettings.Builder()
-        .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
-        .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_POWER)
-        .setConnectable(true)
-        .setTimeout(0)
-        .build()
+    private val settings: AdvertiseSettings? = AdvertiseSettings.Builder()
+            .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
+            .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
+            .setConnectable(true)
+            .setTimeout(0)
+            .build()
 
     var data: AdvertiseData? = null
 
-    var handler = Handler()
+    private var handler = Handler()
 
-    var stopRunnable: Runnable = Runnable {
+    private var stopRunnable: Runnable = Runnable {
         CentralLog.i(TAG, "Advertising stopping as scheduled.")
         stopAdvertising()
     }
@@ -83,21 +82,21 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
     var isAdvertising = false
     var shouldBeAdvertising = false
 
-    //reference
-    //https://code.tutsplus.com/tutorials/how-to-advertise-android-as-a-bluetooth-le-peripheral--cms-25426
-    fun startAdvertisingLegacy(timeoutInMillis: Long) {
+    private fun startAdvertisingLegacy(timeoutInMillis: Long) {
 
         val randomUUID = UUID.randomUUID().toString()
         val finalString = randomUUID.substring(randomUUID.length - charLength, randomUUID.length)
         CentralLog.d(TAG, "Unique string: $finalString")
         val serviceDataByteArray = finalString.toByteArray()
 
-        data = AdvertiseData.Builder()
-            .setIncludeDeviceName(false)
-            .setIncludeTxPowerLevel(true)
-            .addServiceUuid(pUuid)
-            .addManufacturerData(1023, serviceDataByteArray)
-            .build()
+        if (data == null) {
+            data = AdvertiseData.Builder()
+                    .setIncludeDeviceName(false)
+                    .setIncludeTxPowerLevel(true)
+                    .addServiceUuid(pUuid)
+                    .addManufacturerData(1023, serviceDataByteArray)
+                    .build()
+        }
 
         try {
             CentralLog.d(TAG, "Start advertising")
@@ -107,10 +106,8 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
             CentralLog.e(TAG, "Failed to start advertising legacy: ${e.message}")
         }
 
-        if (!infiniteAdvertising) {
-            handler.removeCallbacksAndMessages(stopRunnable)
-            handler.postDelayed(stopRunnable, timeoutInMillis)
-        }
+        handler.removeCallbacksAndMessages(stopRunnable)
+        handler.postDelayed(stopRunnable, timeoutInMillis)
     }
 
     fun startAdvertising(timeoutInMillis: Long) {
@@ -118,7 +115,7 @@ class BLEAdvertiser constructor(val serviceUUID: String) {
         shouldBeAdvertising = true
     }
 
-    fun stopAdvertising() {
+    private fun stopAdvertising() {
         try {
             CentralLog.d(TAG, "stop advertising")
             advertiser?.stopAdvertising(callback)

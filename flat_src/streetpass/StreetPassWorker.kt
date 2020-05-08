@@ -1,4 +1,4 @@
-package io.bluetrace.opentrace.streetpass
+package au.gov.health.covidsafe.streetpass
 
 import android.bluetooth.*
 import android.content.BroadcastReceiver
@@ -6,44 +6,38 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Handler
+import androidx.annotation.Keep
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import io.bluetrace.opentrace.BuildConfig
-import io.bluetrace.opentrace.Utils
-import io.bluetrace.opentrace.bluetooth.gatt.ACTION_DEVICE_PROCESSED
-import io.bluetrace.opentrace.bluetooth.gatt.CONNECTION_DATA
-import io.bluetrace.opentrace.bluetooth.gatt.DEVICE_ADDRESS
-import io.bluetrace.opentrace.idmanager.TempIDManager
-import io.bluetrace.opentrace.logging.CentralLog
-import io.bluetrace.opentrace.protocol.BlueTrace
-import io.bluetrace.opentrace.services.BluetoothMonitoringService
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.blacklistDuration
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.maxQueueTime
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.useBlacklist
+import au.gov.health.covidsafe.BuildConfig
+import au.gov.health.covidsafe.TracerApp
+import au.gov.health.covidsafe.Utils
+import au.gov.health.covidsafe.bluetooth.gatt.*
+import au.gov.health.covidsafe.logging.CentralLog
+import au.gov.health.covidsafe.services.BluetoothMonitoringService
+import au.gov.health.covidsafe.services.BluetoothMonitoringService.Companion.blacklistDuration
+import au.gov.health.covidsafe.services.BluetoothMonitoringService.Companion.maxQueueTime
 import java.util.*
 import java.util.concurrent.PriorityBlockingQueue
-
+@Keep
 class StreetPassWorker(val context: Context) {
 
-    private val workQueue: PriorityBlockingQueue<Work> = PriorityBlockingQueue(5, Collections.reverseOrder<Work>())
+    private val workQueue: PriorityBlockingQueue<Work> = PriorityBlockingQueue()
     private val blacklist: MutableList<BlacklistEntry> = Collections.synchronizedList(ArrayList())
 
-    private val scannedDeviceReceiver = ScannedDeviceReceiver()
-    private val blacklistReceiver = BlacklistReceiver()
+    private val workReceiver = StreetPassWorkReceiver()
+    private val deviceProcessedReceiver = DeviceProcessedReceiver()
     private val serviceUUID: UUID = UUID.fromString(BuildConfig.BLE_SSID)
-    private val characteristicV2: UUID = UUID.fromString(BuildConfig.V2_CHARACTERISTIC_ID)
-
     private val TAG = "StreetPassWorker"
 
     private val bluetoothManager =
-        context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
 
     private lateinit var timeoutHandler: Handler
     private lateinit var queueHandler: Handler
     private lateinit var blacklistHandler: Handler
 
-    private var currentWork: Work? = null
-    private var localBroadcastManager: LocalBroadcastManager =
-        LocalBroadcastManager.getInstance(context)
+    private var currentPendingConnection: Work? = null
+    private var localBroadcastManager: LocalBroadcastManager = LocalBroadcastManager.getInstance(context)
 
     val onWorkTimeoutListener = object : Work.OnWorkTimeoutListener {
         override fun onWorkTimeout(work: Work) {
@@ -53,27 +47,27 @@ class StreetPassWorker(val context: Context) {
             }
 
             CentralLog.e(
-                TAG,
-                "Work timed out for ${work.device.address} @ ${work.connectable.rssi} queued for ${work.checklist.started.timePerformed - work.timeStamp}ms"
+                    TAG,
+                    "Work timed out for ${work.device.address} @ ${work.connectable.rssi} queued for ${work.checklist.started.timePerformed - work.timeStamp}ms"
             )
             CentralLog.e(
-                TAG,
-                "${work.device.address} work status: ${work.checklist}."
+                    TAG,
+                    "${work.device.address} work status: ${work.checklist}."
             )
 
             //connection never formed - don't need to disconnect
             if (!work.checklist.connected.status) {
                 CentralLog.e(TAG, "No connection formed for ${work.device.address}")
-                if (work.device.address == currentWork?.device?.address) {
-                    currentWork = null
+                if (work.device.address == currentPendingConnection?.device?.address) {
+                    currentPendingConnection = null
                 }
 
                 try {
                     work.gatt?.close()
                 } catch (e: Exception) {
                     CentralLog.e(
-                        TAG,
-                        "Unexpected error while attempting to close clientIf to ${work.device.address}: ${e.localizedMessage}"
+                            TAG,
+                            "Unexpected error while attempting to close clientIf to ${work.device.address}: ${e.localizedMessage}"
                     )
                 }
 
@@ -84,41 +78,41 @@ class StreetPassWorker(val context: Context) {
 
                 if (work.checklist.readCharacteristic.status || work.checklist.writeCharacteristic.status || work.checklist.skipped.status) {
                     CentralLog.e(
-                        TAG,
-                        "Connected but did not disconnect in time for ${work.device.address}"
+                            TAG,
+                            "Connected but did not disconnect in time for ${work.device.address}"
                     )
 
                     try {
                         work.gatt?.disconnect()
                         //disconnect callback won't get invoked
                         if (work.gatt == null) {
-                            currentWork = null
+                            currentPendingConnection = null
                             finishWork(work)
                         }
                     } catch (e: Throwable) {
                         CentralLog.e(
-                            TAG,
-                            "Failed to clean up work, bluetooth state likely changed or other device's advertiser stopped: ${e.localizedMessage}"
+                                TAG,
+                                "Failed to clean up work, bluetooth state likely changed or other device's advertiser stopped: ${e.localizedMessage}"
                         )
                     }
 
                 } else {
                     CentralLog.e(
-                        TAG,
-                        "Connected but did nothing for ${work.device.address}"
+                            TAG,
+                            "Connected but did nothing for ${work.device.address}"
                     )
 
                     try {
                         work.gatt?.disconnect()
                         //disconnect callback won't get invoked
                         if (work.gatt == null) {
-                            currentWork = null
+                            currentPendingConnection = null
                             finishWork(work)
                         }
                     } catch (e: Throwable) {
                         CentralLog.e(
-                            TAG,
-                            "Failed to clean up work, bluetooth state likely changed or other device's advertiser stopped: ${e.localizedMessage}"
+                                TAG,
+                                "Failed to clean up work, bluetooth state likely changed or other device's advertiser stopped: ${e.localizedMessage}"
                         )
                     }
                 }
@@ -127,8 +121,8 @@ class StreetPassWorker(val context: Context) {
             //all other edge cases? - disconnected
             else {
                 CentralLog.e(
-                    TAG,
-                    "Disconnected but callback not invoked in time. Waiting.: ${work.device.address}: ${work.checklist}"
+                        TAG,
+                        "Disconnected but callback not invoked in time. Waiting.: ${work.device.address}: ${work.checklist}"
                 )
             }
         }
@@ -140,10 +134,10 @@ class StreetPassWorker(val context: Context) {
 
     private fun prepare() {
         val deviceAvailableFilter = IntentFilter(ACTION_DEVICE_SCANNED)
-        localBroadcastManager.registerReceiver(scannedDeviceReceiver, deviceAvailableFilter)
+        localBroadcastManager.registerReceiver(workReceiver, deviceAvailableFilter)
 
         val deviceProcessedFilter = IntentFilter(ACTION_DEVICE_PROCESSED)
-        localBroadcastManager.registerReceiver(blacklistReceiver, deviceProcessedFilter)
+        localBroadcastManager.registerReceiver(deviceProcessedReceiver, deviceProcessedFilter)
 
         timeoutHandler = Handler()
         queueHandler = Handler()
@@ -151,7 +145,7 @@ class StreetPassWorker(val context: Context) {
     }
 
     fun isCurrentlyWorkedOn(address: String?): Boolean {
-        return currentWork?.let {
+        return currentPendingConnection?.let {
             it.device.address == address
         } ?: false
     }
@@ -163,28 +157,23 @@ class StreetPassWorker(val context: Context) {
             return false
         }
 
-        //if its in blacklist - check for both mac address and manu data?
-        //devices seem to cache manuData. needs further testing. temporarily disabling.
-        if (useBlacklist) {
-            if (
-                blacklist.filter { it.uniqueIdentifier == work.device.address }.isNotEmpty()
-//                || blacklist.filter { it.uniqueIdentifier == work.connectable.manuData }.isNotEmpty()
-            ) {
-                CentralLog.i(TAG, "${work.device.address} is in blacklist, not adding to queue")
-                return false
-            }
+        //if its in blacklist - check for both mac address and manu data
+
+        if (blacklist.any { it.uniqueIdentifier == work.device.address }) {
+            CentralLog.i(TAG, "${work.device.address} is in blacklist, not adding to queue")
+            return false
         }
 
         //if we haven't seen this device yet
-        if (workQueue.filter { it.device.address == work.device.address }.isEmpty()) {
+        if (workQueue.none { it.device.address == work.device.address }) {
             workQueue.offer(work)
             queueHandler.postDelayed({
                 if (workQueue.contains(work))
                     CentralLog.i(
-                        TAG,
-                        "Work for ${work.device.address} removed from queue? : ${workQueue.remove(
-                            work
-                        )}"
+                            TAG,
+                            "Work for ${work.device.address} removed from queue? : ${workQueue.remove(
+                                    work
+                            )}"
                     )
             }, maxQueueTime)
             CentralLog.i(TAG, "Added to work queue: ${work.device.address}")
@@ -193,48 +182,50 @@ class StreetPassWorker(val context: Context) {
         //this gadget is already in the queue, we can use the latest rssi and txpower? replace the entry
         else {
 
+            //ignore it
             CentralLog.i(TAG, "${work.device.address} is already in work queue")
 
-            var prevWork = workQueue.find { it.device.address == work.device.address }
-            var removed = workQueue.remove(prevWork)
-            var added = workQueue.offer(work)
+            val prevWork = workQueue.find { it.device.address == work.device.address }
+            val removed = workQueue.remove(prevWork)
+            val added = workQueue.offer(work)
 
-            CentralLog.i(TAG, "Queue entry updated - removed: ${removed}, added: ${added}")
+            CentralLog.i(TAG, "Queue entry updated - removed: ${removed}, added: $added")
 
             return false
         }
     }
 
     fun doWork() {
-        //check the status of the current work item
-        if (currentWork != null) {
+
+        if (currentPendingConnection != null) {
             CentralLog.i(
-                TAG,
-                "Already trying to connect to: ${currentWork?.device?.address}"
+                    TAG,
+                    "Already trying to connect to: ${currentPendingConnection?.device?.address}"
             )
             //devices may reset their bluetooth before the disconnection happens properly and disconnect is never called.
             //handle that situation here
 
-            //if the job was finished or timed out but was not removed
-            var timedout = System.currentTimeMillis() > currentWork?.timeout ?: 0
-            if (currentWork?.finished == true || timedout) {
+            //if the job was finished but not removed
+            //or if the job was timed out but not removed
+            val timedout = System.currentTimeMillis() > currentPendingConnection?.timeout ?: 0
+            if (currentPendingConnection?.finished ?: false || timedout) {
 
                 CentralLog.w(
-                    TAG,
-                    "Handling erroneous current work for ${currentWork?.device?.address} : - finished: ${currentWork?.finished
-                        ?: false}, timedout: $timedout"
+                        TAG,
+                        "Handling erroneous current work for ${currentPendingConnection?.device?.address} : - finished: ${currentPendingConnection?.finished
+                                ?: false}, timedout: $timedout"
                 )
                 //check if there is, for some reason, an existing connection
-                if (currentWork != null) {
+                if (currentPendingConnection != null) {
                     if (bluetoothManager.getConnectedDevices(BluetoothProfile.GATT).contains(
-                            currentWork?.device
-                        )
+                                    currentPendingConnection?.device
+                            )
                     ) {
                         CentralLog.w(
-                            TAG,
-                            "Disconnecting dangling connection to ${currentWork?.device?.address}"
+                                TAG,
+                                "Disconnecting dangling connection to ${currentPendingConnection?.device?.address}"
                         )
-                        currentWork?.gatt?.disconnect()
+                        currentPendingConnection?.gatt?.disconnect()
                     }
                 } else {
                     doWork()
@@ -259,25 +250,25 @@ class StreetPassWorker(val context: Context) {
             workToDo?.let { work ->
                 if (now - work.timeStamp > maxQueueTime) {
                     CentralLog.w(
-                        TAG,
-                        "Work request for ${work.device.address} too old. Not doing"
+                            TAG,
+                            "Work request for ${work.device.address} too old. Not doing"
                     )
                     workToDo = null
                 }
             }
         }
 
-        workToDo?.let { currentWorkOrder ->
+        workToDo?.let {
 
-            val device = currentWorkOrder.device
+            val device = it.device
 
-            if (useBlacklist) {
-                if (blacklist.filter { it.uniqueIdentifier == device.address }.isNotEmpty()) {
-                    CentralLog.w(TAG, "Already worked on ${device.address}. Skip.")
-                    doWork()
-                    return
-                }
+            if (blacklist.filter { it.uniqueIdentifier == device.address }.isNotEmpty()) {
+                CentralLog.w(TAG, "Already worked on ${device.address}. Skip.")
+                doWork()
+                return
             }
+
+            var currentWorkOrder = it
 
             val alreadyConnected = getConnectionStatus(device)
             CentralLog.i(TAG, "Already connected to ${device.address} : $alreadyConnected")
@@ -287,62 +278,71 @@ class StreetPassWorker(val context: Context) {
                 //skip. we'll rely on the other party to do a write
                 currentWorkOrder.checklist.skipped.status = true
                 currentWorkOrder.checklist.skipped.timePerformed = System.currentTimeMillis()
-                finishWork(currentWorkOrder)
+                currentWorkOrder.let {
+                    finishWork(it)
+                }
+
             } else {
 
                 currentWorkOrder.let {
 
-                    val gattCallback = CentralGattCallback(it)
-                    CentralLog.i(
-                        TAG,
-                        "Starting work - connecting to device: ${device.address} @ ${it.connectable.rssi} ${System.currentTimeMillis() - it.timeStamp}ms ago"
-                    )
-                    currentWork = it
+                    if (it != null) {
 
-                    try {
-                        it.checklist.started.status = true
-                        it.checklist.started.timePerformed = System.currentTimeMillis()
-
-                        it.startWork(context, gattCallback)
-
-                        var connecting = it.gatt?.connect() ?: false
-
-                        if (!connecting) {
-                            CentralLog.e(
+                        val gattCallback = StreetPassGattCallback(it)
+                        CentralLog.i(
                                 TAG,
-                                "Alamak! not connecting to ${it.device.address}??"
-                            )
+                                "Starting work - connecting to device: ${device.address} @ ${it.connectable.rssi} ${System.currentTimeMillis() - it.timeStamp}ms ago"
+                        )
+                        currentPendingConnection = it
 
-                            //bail and do the next job
+                        try {
+                            it.checklist.started.status = true
+                            it.checklist.started.timePerformed = System.currentTimeMillis()
+
+                            it.startWork(context, gattCallback)
+
+                            var connecting = it.gatt?.connect() ?: false
+
+                            if (!connecting) {
+                                CentralLog.e(
+                                        TAG,
+                                        "not connecting to ${it.device.address}??"
+                                )
+
+                                //bail and do the next job
+                                CentralLog.e(TAG, "Moving on to next task")
+                                currentPendingConnection = null
+                                doWork()
+                                return
+
+                            } else {
+                                CentralLog.i(
+                                        TAG,
+                                        "Connection to ${it.device.address} attempt in progress"
+                                )
+                            }
+
+                            timeoutHandler.postDelayed(
+                                    it.timeoutRunnable,
+                                    BluetoothMonitoringService.connectionTimeout
+                            )
+                            it.timeout =
+                                    System.currentTimeMillis() + BluetoothMonitoringService.connectionTimeout
+
+                            CentralLog.i(TAG, "Timeout scheduled for ${it.device.address}")
+                        } catch (e: Throwable) {
+                            CentralLog.e(
+                                    TAG,
+                                    "Unexpected error while attempting to connect to ${device.address}: ${e.localizedMessage}"
+                            )
                             CentralLog.e(TAG, "Moving on to next task")
-                            currentWork = null
+                            currentPendingConnection = null
                             doWork()
                             return
-
-                        } else {
-                            CentralLog.i(
-                                TAG,
-                                "Connection to ${it.device.address} attempt in progress"
-                            )
                         }
 
-                        timeoutHandler.postDelayed(
-                            it.timeoutRunnable,
-                            BluetoothMonitoringService.connectionTimeout
-                        )
-                        it.timeout =
-                            System.currentTimeMillis() + BluetoothMonitoringService.connectionTimeout
-
-                        CentralLog.i(TAG, "Timeout scheduled for ${it.device.address}")
-                    } catch (e: Throwable) {
-                        CentralLog.e(
-                            TAG,
-                            "Unexpected error while attempting to connect to ${device.address}: ${e.localizedMessage}"
-                        )
-                        CentralLog.e(TAG, "Moving on to next task")
-                        currentWork = null
-                        doWork()
-                        return
+                    } else {
+                        CentralLog.e(TAG, "Work not started - missing Work Object")
                     }
                 }
             }
@@ -357,8 +357,8 @@ class StreetPassWorker(val context: Context) {
     private fun getConnectionStatus(device: BluetoothDevice): Boolean {
 
         val connectedDevices = bluetoothManager.getDevicesMatchingConnectionStates(
-            BluetoothProfile.GATT,
-            intArrayOf(BluetoothProfile.STATE_CONNECTED)
+                BluetoothProfile.GATT,
+                intArrayOf(BluetoothProfile.STATE_CONNECTED)
         )
         return connectedDevices.contains(device)
     }
@@ -367,25 +367,24 @@ class StreetPassWorker(val context: Context) {
 
         if (work.finished) {
             CentralLog.i(
-                TAG,
-                "Work on ${work.device.address} already finished and closed"
+                    TAG,
+                    "Work on ${work.device.address} already finished and closed"
             )
             return
         }
 
         if (work.isCriticalsCompleted()) {
             Utils.broadcastDeviceProcessed(context, work.device.address)
-//            Utils.broadcastDeviceProcessed(context, work.connectable.manuData)
         }
 
         CentralLog.i(
-            TAG,
-            "Work on ${work.device.address} stopped in: ${work.checklist.disconnected.timePerformed - work.checklist.started.timePerformed}"
+                TAG,
+                "Work on ${work.device.address} stopped in: ${work.checklist.disconnected.timePerformed - work.checklist.started.timePerformed}"
         )
 
         CentralLog.i(
-            TAG,
-            "Work on ${work.device.address} completed?: ${work.isCriticalsCompleted()}. Connected in: ${work.checklist.connected.timePerformed - work.checklist.started.timePerformed}. connection lasted for: ${work.checklist.disconnected.timePerformed - work.checklist.connected.timePerformed}. Status: ${work.checklist}"
+                TAG,
+                "Work on ${work.device.address} completed?: ${work.isCriticalsCompleted()}. Connected in: ${work.checklist.connected.timePerformed - work.checklist.started.timePerformed}. connection lasted for: ${work.checklist.disconnected.timePerformed - work.checklist.connected.timePerformed}. Status: ${work.checklist}"
         )
 
         timeoutHandler.removeCallbacks(work.timeoutRunnable)
@@ -395,9 +394,9 @@ class StreetPassWorker(val context: Context) {
         doWork()
     }
 
-    inner class CentralGattCallback(val work: Work) : BluetoothGattCallback() {
+    inner class StreetPassGattCallback(private val work: Work) : BluetoothGattCallback() {
 
-        fun endWorkConnection(gatt: BluetoothGatt) {
+        private fun endWorkConnection(gatt: BluetoothGatt) {
             CentralLog.i(TAG, "Ending connection with: ${gatt.device.address}")
             gatt.disconnect()
         }
@@ -410,19 +409,18 @@ class StreetPassWorker(val context: Context) {
                     BluetoothProfile.STATE_CONNECTED -> {
                         CentralLog.i(TAG, "Connected to other GATT server - ${gatt.device.address}")
 
-                        //get a fast connection?
-//                        gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
                         gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED)
                         gatt.requestMtu(512)
 
                         work.checklist.connected.status = true
                         work.checklist.connected.timePerformed = System.currentTimeMillis()
+
                     }
 
                     BluetoothProfile.STATE_DISCONNECTED -> {
                         CentralLog.i(
-                            TAG,
-                            "Disconnected from other GATT server - ${gatt.device.address}"
+                                TAG,
+                                "Disconnected from other GATT server - ${gatt.device.address}"
                         )
                         work.checklist.disconnected.status = true
                         work.checklist.disconnected.timePerformed = System.currentTimeMillis()
@@ -432,8 +430,8 @@ class StreetPassWorker(val context: Context) {
                         CentralLog.i(TAG, "Timeout removed for ${work.device.address}")
 
                         //remove job from list of current work - if it is the current work
-                        if (work.device.address == currentWork?.device?.address) {
-                            currentWork = null
+                        if (work.device.address == currentPendingConnection?.device?.address) {
+                            currentPendingConnection = null
                         }
                         gatt.close()
                         finishWork(work)
@@ -455,15 +453,15 @@ class StreetPassWorker(val context: Context) {
                 work.checklist.mtuChanged.timePerformed = System.currentTimeMillis()
 
                 CentralLog.i(
-                    TAG,
-                    "${gatt?.device?.address} MTU is $mtu. Was change successful? : ${status == BluetoothGatt.GATT_SUCCESS}"
+                        TAG,
+                        "${gatt?.device?.address} MTU is $mtu. Was change successful? : ${status == BluetoothGatt.GATT_SUCCESS}"
                 )
 
                 gatt?.let {
                     val discoveryOn = gatt.discoverServices()
                     CentralLog.i(
-                        TAG,
-                        "Attempting to start service discovery on ${gatt.device.address}: $discoveryOn"
+                            TAG,
+                            "Attempting to start service discovery on ${gatt.device.address}: $discoveryOn"
                     )
                 }
             }
@@ -474,27 +472,28 @@ class StreetPassWorker(val context: Context) {
             when (status) {
                 BluetoothGatt.GATT_SUCCESS -> {
                     CentralLog.i(
-                        TAG,
-                        "Discovered ${gatt.services.size} services on ${gatt.device.address}"
+                            TAG,
+                            "onServicesDiscovered received: BluetoothGatt.GATT_SUCCESS - $status"
+                    )
+                    CentralLog.i(
+                            TAG,
+                            "Discovered ${gatt.services.size} services on ${gatt.device.address}"
                     )
 
-                    var service = gatt.getService(serviceUUID)
+                    val service = gatt.getService(serviceUUID)
 
                     service?.let {
-
-                        //select characteristicUUID to read from
-                        val characteristic = service.getCharacteristic(characteristicV2)
-
+                        val characteristic = service.getCharacteristic(serviceUUID)
                         if (characteristic != null) {
                             val readSuccess = gatt.readCharacteristic(characteristic)
                             CentralLog.i(
-                                TAG,
-                                "Attempt to read characteristic of our service on ${gatt.device.address}: $readSuccess"
+                                    TAG,
+                                    "Attempt to read characteristic of our service on ${gatt.device.address}: $readSuccess"
                             )
                         } else {
                             CentralLog.e(
-                                TAG,
-                                "WTF? ${gatt.device.address} does not have our characteristic"
+                                    TAG,
+                                    "${gatt.device.address} does not have our characteristic"
                             )
                             endWorkConnection(gatt)
                         }
@@ -502,8 +501,8 @@ class StreetPassWorker(val context: Context) {
 
                     if (service == null) {
                         CentralLog.e(
-                            TAG,
-                            "WTF? ${gatt.device.address} does not have our service"
+                                TAG,
+                                "${gatt.device.address} does not have our service"
                         )
                         endWorkConnection(gatt)
                     }
@@ -518,54 +517,59 @@ class StreetPassWorker(val context: Context) {
         // data read from a perhipheral
         //I am a central
         override fun onCharacteristicRead(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            status: Int
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+                status: Int
         ) {
 
             CentralLog.i(TAG, "Read Status: $status")
             when (status) {
                 BluetoothGatt.GATT_SUCCESS -> {
                     CentralLog.i(
-                        TAG,
-                        "Characteristic read from ${gatt.device.address}: ${characteristic.getStringValue(
-                            0
-                        )}"
+                            TAG,
+                            "Characteristic read from ${gatt.device.address}: ${characteristic.getStringValue(
+                                    0
+                            )}"
                     )
 
-                    CentralLog.i(
-                        TAG,
-                        "onCharacteristicRead: ${work.device.address} - [${work.connectable.rssi}]"
-                    )
+                    when (characteristic.uuid) {
 
-                    if (BlueTrace.supportsCharUUID(characteristic.uuid)) {
+                        serviceUUID -> {
+                            //need to populate in the rssi here?
+                            CentralLog.i(
+                                    TAG,
+                                    "onCharacteristicRead: ${work.device.address} - [${work.connectable.rssi}]"
+                            )
 
-                        try {
-                            val bluetraceImplementation =
-                                BlueTrace.getImplementation(characteristic.uuid)
                             val dataBytes = characteristic.value
 
-                            val connectionRecord =
-                                bluetraceImplementation
-                                    .central
-                                    .processReadRequestDataReceived(
-                                        dataRead = dataBytes,
-                                        peripheralAddress = work.device.address,
+                            try {
+                                val readData = ReadRequestPayload.createReadRequestPayload(dataBytes)
+                                val peripheral =
+                                        PeripheralDevice(readData.modelP, work.device.address)
+
+                                val connectionRecord = ConnectionRecord(
+                                        version = readData.v,
+                                        msg = readData.msg,
+                                        org = readData.org,
+                                        peripheral = peripheral,
+                                        central = TracerApp.asCentralDevice(),
                                         rssi = work.connectable.rssi,
                                         txPower = work.connectable.transmissionPower
-                                    )
+                                )
 
-                            //if the deserializing was a success, connectionRecord will not be null, save it
-                            connectionRecord?.let {
                                 Utils.broadcastStreetPassReceived(
-                                    context,
-                                    connectionRecord
+                                        context,
+                                        connectionRecord
+                                )
+
+                            } catch (e: Throwable) {
+                                CentralLog.e(
+                                        TAG,
+                                        "Failed to de-serialize request payload object - ${e.message}"
                                 )
                             }
-                        } catch (e: Throwable) {
-                            CentralLog.e(TAG, "Failed to process read payload - ${e.message}")
                         }
-
                     }
                     work.checklist.readCharacteristic.status = true
                     work.checklist.readCharacteristic.timePerformed = System.currentTimeMillis()
@@ -573,61 +577,54 @@ class StreetPassWorker(val context: Context) {
 
                 else -> {
                     CentralLog.w(
-                        TAG,
-                        "Failed to read characteristics from ${gatt.device.address}: $status"
+                            TAG,
+                            "Failed to read characteristics from ${gatt.device.address}: $status"
                     )
                 }
             }
 
-            //attempt to do a write
-            if (BlueTrace.supportsCharUUID(characteristic.uuid)) {
-                val bluetraceImplementation = BlueTrace.getImplementation(characteristic.uuid)
+            // Only attempt to write BM back to peripheral if it is still valid
+            if (Utils.bmValid(context)) {
+                //may have failed to read, can try to write
+                //we are writing as the central device
+                val thisCentralDevice = TracerApp.asCentralDevice()
 
-                // Only attempt to write BM back to peripheral if it is still valid
-                if (TempIDManager.bmValid(context)) {
-                    //may have failed to read, can try to write
-                    //we are writing as the central device
-                    var writedata = bluetraceImplementation.central.prepareWriteRequestData(
-                        bluetraceImplementation.versionInt,
-                        work.connectable.rssi,
-                        work.connectable.transmissionPower
-                    )
-                    characteristic.value = writedata
-                    val writeSuccess = gatt.writeCharacteristic(characteristic)
-                    CentralLog.i(
+                val writedata = WriteRequestPayload(
+                        v = TracerApp.protocolVersion,
+                        msg = TracerApp.thisDeviceMsg(),
+                        org = TracerApp.ORG,
+                        modelC = thisCentralDevice.modelC,
+                        rssi = work.connectable.rssi,
+                        txPower = work.connectable.transmissionPower
+                )
+
+                characteristic.value = writedata.getPayload()
+                val writeSuccess = gatt.writeCharacteristic(characteristic)
+                CentralLog.i(
                         TAG,
                         "Attempt to write characteristic to our service on ${gatt.device.address}: $writeSuccess"
-                    )
-                } else {
-                    CentralLog.i(
+                )
+            } else {
+                CentralLog.i(
                         TAG,
                         "Expired BM. Skipping attempt to write characteristic to our service on ${gatt.device.address}"
-                    )
-
-                    endWorkConnection(gatt)
-                }
-
-            } else {
-                CentralLog.w(
-                    TAG,
-                    "Not writing to ${gatt.device.address}. Characteristic ${characteristic.uuid} is not supported"
                 )
+
                 endWorkConnection(gatt)
             }
         }
 
         override fun onCharacteristicWrite(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            status: Int
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+                status: Int
         ) {
 
             when (status) {
                 BluetoothGatt.GATT_SUCCESS -> {
                     CentralLog.i(TAG, "Characteristic wrote successfully")
                     work.checklist.writeCharacteristic.status = true
-                    work.checklist.writeCharacteristic.timePerformed =
-                        System.currentTimeMillis()
+                    work.checklist.writeCharacteristic.timePerformed = System.currentTimeMillis()
                 }
                 else -> {
                     CentralLog.i(TAG, "Failed to write characteristics: $status")
@@ -642,54 +639,53 @@ class StreetPassWorker(val context: Context) {
     fun terminateConnections() {
         CentralLog.d(TAG, "Cleaning up worker.")
 
-        currentWork?.gatt?.disconnect()
-        currentWork = null
+        currentPendingConnection?.gatt?.disconnect()
+        currentPendingConnection = null
 
         timeoutHandler.removeCallbacksAndMessages(null)
         queueHandler.removeCallbacksAndMessages(null)
         blacklistHandler.removeCallbacksAndMessages(null)
 
+        //concurrent modifications?
         workQueue.clear()
         blacklist.clear()
     }
 
     fun unregisterReceivers() {
         try {
-            localBroadcastManager.unregisterReceiver(blacklistReceiver)
+            localBroadcastManager.unregisterReceiver(deviceProcessedReceiver)
         } catch (e: Throwable) {
             CentralLog.e(TAG, "Unable to close receivers: ${e.localizedMessage}")
         }
 
         try {
-            localBroadcastManager.unregisterReceiver(scannedDeviceReceiver)
+            localBroadcastManager.unregisterReceiver(workReceiver)
         } catch (e: Throwable) {
             CentralLog.e(TAG, "Unable to close receivers: ${e.localizedMessage}")
         }
     }
 
-    inner class BlacklistReceiver : BroadcastReceiver() {
+    inner class DeviceProcessedReceiver : BroadcastReceiver() {
 
         override fun onReceive(context: Context, intent: Intent) {
             if (ACTION_DEVICE_PROCESSED == intent.action) {
                 val deviceAddress = intent.getStringExtra(DEVICE_ADDRESS)
                 CentralLog.d(TAG, "Adding to blacklist: $deviceAddress")
-                val entry = BlacklistEntry(deviceAddress, System.currentTimeMillis())
+                val entry = BlacklistEntry(deviceAddress)
                 blacklist.add(entry)
                 blacklistHandler.postDelayed({
                     CentralLog.i(
-                        TAG,
-                        "blacklist for ${entry.uniqueIdentifier} removed? : ${blacklist.remove(
-                            entry
-                        )}"
+                            TAG,
+                            "blacklist for ${entry.uniqueIdentifier} removed? : ${blacklist.remove(entry)}"
                     )
                 }, blacklistDuration)
             }
         }
     }
 
-    inner class ScannedDeviceReceiver : BroadcastReceiver() {
+    inner class StreetPassWorkReceiver : BroadcastReceiver() {
 
-        private val TAG = "ScannedDeviceReceiver"
+        private val TAG = "StreetPassWorkReceiver"
 
         override fun onReceive(context: Context?, intent: Intent?) {
 
@@ -697,16 +693,16 @@ class StreetPassWorker(val context: Context) {
                 if (ACTION_DEVICE_SCANNED == intent.action) {
                     //get data from extras
                     val device: BluetoothDevice? =
-                        intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
+                            intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
                     val connectable: ConnectablePeripheral? =
-                        intent.getParcelableExtra(CONNECTION_DATA)
+                            intent.getParcelableExtra(CONNECTION_DATA)
 
                     val devicePresent = device != null
                     val connectablePresent = connectable != null
 
                     CentralLog.i(
-                        TAG,
-                        "Device received: ${device?.address}. Device present: $devicePresent, Connectable Present: $connectablePresent"
+                            TAG,
+                            "Device received: ${device?.address}. Device present: $devicePresent, Connectable Present: $connectablePresent"
                     )
 
                     device?.let {
@@ -722,3 +718,4 @@ class StreetPassWorker(val context: Context) {
         }
     }
 }
+

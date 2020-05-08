@@ -1,13 +1,8 @@
-package io.bluetrace.opentrace.streetpass.persistence
+package au.gov.health.covidsafe.streetpass.persistence
 
 import androidx.lifecycle.LiveData
 
-class StreetPassRecordRepository(private val recordDao: StreetPassRecordDao) {
-    // Room executes all queries on a separate thread.
-    // Observed LiveData will notify the observer when the data has changed.
+class StreetPassRecordRepository(recordDao: StreetPassRecordDao) {
     val allRecords: LiveData<List<StreetPassRecord>> = recordDao.getRecords()
 
-    suspend fun insert(word: StreetPassRecord) {
-        recordDao.insert(word)
-    }
 }

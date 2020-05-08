@@ -1,4 +1,4 @@
-package io.bluetrace.opentrace.status
+package au.gov.health.covidsafe.status
 
 import android.os.Parcelable
 import kotlinx.android.parcel.Parcelize

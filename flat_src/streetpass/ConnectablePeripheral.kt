@@ -1,11 +1,10 @@
-package io.bluetrace.opentrace.streetpass
+package au.gov.health.covidsafe.streetpass
 
 import android.os.Parcelable
 import kotlinx.android.parcel.Parcelize
 
 @Parcelize
 class ConnectablePeripheral(
-    var manuData: String,
     var transmissionPower: Int?,
     var rssi: Int
 ) : Parcelable

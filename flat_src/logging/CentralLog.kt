@@ -1,16 +1,15 @@
-package io.bluetrace.opentrace.logging
+package au.gov.health.covidsafe.logging
 
 import android.os.Build
 import android.os.PowerManager
 import android.util.Log
-import io.bluetrace.opentrace.BuildConfig
-
+import au.gov.health.covidsafe.BuildConfig
 
 class CentralLog {
 
     companion object {
 
-        var pm: PowerManager? = null
+        private var pm: PowerManager? = null
 
         fun setPowerManager(powerManager: PowerManager) {
             pm = powerManager
@@ -38,7 +37,6 @@ class CentralLog {
             }
 
             Log.d(tag, getIdleStatus() + message)
-            SDLog.d(tag, getIdleStatus() + message)
         }
 
         fun d(tag: String, message: String, e: Throwable?) {
@@ -47,7 +45,6 @@ class CentralLog {
             }
 
             Log.d(tag, getIdleStatus() + message, e)
-            SDLog.d(tag, getIdleStatus() + message)
         }
 
 
@@ -57,7 +54,6 @@ class CentralLog {
             }
 
             Log.w(tag, getIdleStatus() + message)
-            SDLog.w(tag, getIdleStatus() + message)
         }
 
         fun i(tag: String, message: String) {
@@ -66,7 +62,6 @@ class CentralLog {
             }
 
             Log.i(tag, getIdleStatus() + message)
-            SDLog.i(tag, getIdleStatus() + message)
         }
 
         fun e(tag: String, message: String) {
@@ -75,7 +70,14 @@ class CentralLog {
             }
 
             Log.e(tag, getIdleStatus() + message)
-            SDLog.e(tag, getIdleStatus() + message)
+        }
+
+        fun e(tag: String, message: String, exception: Exception) {
+            if (!shouldLog()) {
+                return
+            }
+
+            Log.e(tag, getIdleStatus() + message, exception)
         }
 
     }

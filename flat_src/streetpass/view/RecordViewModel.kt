@@ -1,11 +1,11 @@
-package io.bluetrace.opentrace.streetpass.view
+package au.gov.health.covidsafe.streetpass.view
 
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
-import io.bluetrace.opentrace.streetpass.persistence.StreetPassRecord
-import io.bluetrace.opentrace.streetpass.persistence.StreetPassRecordDatabase
-import io.bluetrace.opentrace.streetpass.persistence.StreetPassRecordRepository
+import au.gov.health.covidsafe.streetpass.persistence.StreetPassRecord
+import au.gov.health.covidsafe.streetpass.persistence.StreetPassRecordDatabase
+import au.gov.health.covidsafe.streetpass.persistence.StreetPassRecordRepository
 
 class RecordViewModel(app: Application) : AndroidViewModel(app) {
 

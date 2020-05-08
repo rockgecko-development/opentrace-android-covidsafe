@@ -1,9 +1,8 @@
-package io.bluetrace.opentrace.bluetooth.gatt
+package au.gov.health.covidsafe.bluetooth.gatt
 
 import android.bluetooth.BluetoothGattCharacteristic
 import android.bluetooth.BluetoothGattService
 import android.content.Context
-import io.bluetrace.opentrace.BuildConfig
 import java.util.*
 import kotlin.properties.Delegates
 
@@ -13,15 +12,23 @@ class GattService constructor(val context: Context, serviceUUIDString: String) {
 
     var gattService: BluetoothGattService by Delegates.notNull()
 
-    private var characteristicV2: BluetoothGattCharacteristic
+    private var devicePropertyCharacteristic: BluetoothGattCharacteristic by Delegates.notNull()
 
     init {
         gattService = BluetoothGattService(serviceUUID, BluetoothGattService.SERVICE_TYPE_PRIMARY)
-        characteristicV2 = BluetoothGattCharacteristic(
-            UUID.fromString(BuildConfig.V2_CHARACTERISTIC_ID),
+        devicePropertyCharacteristic = BluetoothGattCharacteristic(
+            serviceUUID,
             BluetoothGattCharacteristic.PROPERTY_READ or BluetoothGattCharacteristic.PROPERTY_WRITE,
             BluetoothGattCharacteristic.PERMISSION_READ or BluetoothGattCharacteristic.PERMISSION_WRITE
         )
-        gattService.addCharacteristic(characteristicV2)
+        gattService.addCharacteristic(devicePropertyCharacteristic)
+    }
+
+    fun setValue(value: String) {
+        setValue(value.toByteArray(Charsets.UTF_8))
+    }
+
+    fun setValue(value: ByteArray) {
+        devicePropertyCharacteristic.value = value
     }
 }

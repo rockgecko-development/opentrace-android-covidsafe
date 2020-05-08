@@ -1,16 +1,18 @@
-package io.bluetrace.opentrace.streetpass.persistence
+package au.gov.health.covidsafe.streetpass.persistence
 
 import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
-import io.bluetrace.opentrace.status.persistence.StatusRecord
-import io.bluetrace.opentrace.status.persistence.StatusRecordDao
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import au.gov.health.covidsafe.status.persistence.StatusRecord
+import au.gov.health.covidsafe.status.persistence.StatusRecordDao
 
 
 @Database(
-    entities = arrayOf(StreetPassRecord::class, StatusRecord::class),
-    version = 1,
+        entities = [StreetPassRecord::class, StatusRecord::class],
+    version = 2,
     exportSchema = true
 )
 abstract class StreetPassRecordDatabase : RoomDatabase() {
@@ -19,8 +21,6 @@ abstract class StreetPassRecordDatabase : RoomDatabase() {
     abstract fun statusDao(): StatusRecordDao
 
     companion object {
-        // Singleton prevents multiple instances of database opening at the
-        // same time.
         @Volatile
         private var INSTANCE: StreetPassRecordDatabase? = null
 
@@ -35,10 +35,42 @@ abstract class StreetPassRecordDatabase : RoomDatabase() {
                     StreetPassRecordDatabase::class.java,
                     "record_database"
                 )
+                    .addMigrations(MIGRATION_1_2)
                     .build()
                 INSTANCE = instance
                 return instance
             }
         }
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                //adding of status table
+                database.execSQL("CREATE TABLE IF NOT EXISTS `status_table` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `timestamp` INTEGER NOT NULL, `msg` TEXT NOT NULL)")
+
+                if (!isFieldExist(database, "record_table", "v")) {
+                    database.execSQL("ALTER TABLE `record_table` ADD COLUMN `v` INTEGER NOT NULL DEFAULT 1")
+                }
+
+                if (!isFieldExist(database, "record_table", "org")) {
+                    database.execSQL("ALTER TABLE `record_table` ADD COLUMN `org` TEXT NOT NULL DEFAULT 'AU_DTA'")
+                }
+
+            }
+        }
+
+        fun isFieldExist(db: SupportSQLiteDatabase, tableName: String, fieldName: String): Boolean {
+            var isExist = false
+            val res =
+                db.query("PRAGMA table_info($tableName)", null)
+            res.moveToFirst()
+            do {
+                val currentColumn = res.getString(1)
+                if (currentColumn == fieldName) {
+                    isExist = true
+                }
+            } while (res.moveToNext())
+            return isExist
+        }
     }
+
 }

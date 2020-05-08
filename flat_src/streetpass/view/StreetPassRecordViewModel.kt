@@ -1,8 +1,8 @@
-package io.bluetrace.opentrace.streetpass.view
+package au.gov.health.covidsafe.streetpass.view
 
-import io.bluetrace.opentrace.streetpass.persistence.StreetPassRecord
+import au.gov.health.covidsafe.streetpass.persistence.StreetPassRecord
 
-class StreetPassRecordViewModel(record: StreetPassRecord, val number: Int = 1) {
+class StreetPassRecordViewModel(record: StreetPassRecord, val number: Int) {
     val version = record.v
     val modelC = record.modelC
     val modelP = record.modelP

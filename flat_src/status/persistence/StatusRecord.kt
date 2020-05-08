@@ -1,4 +1,4 @@
-package io.bluetrace.opentrace.status.persistence
+package au.gov.health.covidsafe.status.persistence
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
