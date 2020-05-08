@@ -1,3 +1,3 @@
-package io.bluetrace.opentrace.streetpass
+package au.gov.health.covidsafe.streetpass
 
-class BlacklistEntry(val uniqueIdentifier: String, val timeEntered: Long)
+class BlacklistEntry(val uniqueIdentifier: String?)

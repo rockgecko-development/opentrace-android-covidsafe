@@ -1,4 +1,4 @@
-package io.bluetrace.opentrace.status.persistence
+package au.gov.health.covidsafe.status.persistence
 
 import androidx.lifecycle.LiveData
 import androidx.room.*
@@ -16,12 +16,11 @@ interface StatusRecordDao {
     @Query("SELECT * from status_table where msg = :msg ORDER BY timestamp DESC LIMIT 1")
     fun getMostRecentRecord(msg: String): LiveData<StatusRecord?>
 
+    @Query("DELETE FROM status_table WHERE timestamp <= :timeInMs")
+    fun deleteDataOlder(timeInMs: Long): Int
 
     @Query("DELETE FROM status_table")
     fun nukeDb()
-
-    @Query("DELETE FROM status_table WHERE timestamp < :before")
-    suspend fun purgeOldRecords(before: Long)
 
     @RawQuery
     fun getRecordsViaQuery(query: SupportSQLiteQuery): List<StatusRecord>

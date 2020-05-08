@@ -1,11 +1,10 @@
-package io.bluetrace.opentrace.streetpass
+package au.gov.health.covidsafe.streetpass
 
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.content.Context
-import android.os.Build
 import com.google.gson.Gson
-import io.bluetrace.opentrace.logging.CentralLog
+import au.gov.health.covidsafe.logging.CentralLog
 import kotlin.properties.Delegates
 
 class Work constructor(
@@ -17,7 +16,7 @@ class Work constructor(
     var checklist = WorkCheckList()
     var gatt: BluetoothGatt? = null
     var finished = false
-    var timeout: Long = 0
+    var timeout : Long = 0
 
     private val TAG = "Work"
 
@@ -29,32 +28,22 @@ class Work constructor(
         timeStamp = System.currentTimeMillis()
     }
 
-    fun isSafelyCompleted(): Boolean {
-        return (checklist.connected.status && checklist.readCharacteristic.status && checklist.writeCharacteristic.status && checklist.disconnected.status) || checklist.skipped.status
-    }
-
     fun isCriticalsCompleted(): Boolean {
         return (checklist.connected.status && checklist.readCharacteristic.status && checklist.writeCharacteristic.status) || checklist.skipped.status
     }
 
     fun startWork(
         context: Context,
-        gattCallback: StreetPassWorker.CentralGattCallback
+        gattCallback: StreetPassWorker.StreetPassGattCallback
     ) {
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            gatt = device.connectGatt(context, false, gattCallback, BluetoothDevice.TRANSPORT_LE)
-        } else {
-            gatt = device.connectGatt(context, false, gattCallback)
-        }
-
+        gatt = device.connectGatt(context, false, gattCallback)
         if (gatt == null) {
             CentralLog.e(TAG, "Unable to connect to ${device.address}")
         }
     }
 
     override fun compareTo(other: Work): Int {
-        return timeStamp.compareTo(other.timeStamp)
+        return -(timeStamp - other.timeStamp).toInt()
     }
 
     inner class WorkCheckList {

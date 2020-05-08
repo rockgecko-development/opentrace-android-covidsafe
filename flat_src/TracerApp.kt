@@ -1,47 +1,39 @@
-package io.bluetrace.opentrace
+package au.gov.health.covidsafe
 
 import android.app.Application
 import android.content.Context
 import android.os.Build
-import io.bluetrace.opentrace.idmanager.TempIDManager
-import io.bluetrace.opentrace.logging.CentralLog
-import io.bluetrace.opentrace.services.BluetoothMonitoringService
-import io.bluetrace.opentrace.streetpass.CentralDevice
-import io.bluetrace.opentrace.streetpass.PeripheralDevice
+import com.atlassian.mobilekit.module.feedback.FeedbackModule
+
+import au.gov.health.covidsafe.logging.CentralLog
+import au.gov.health.covidsafe.services.BluetoothMonitoringService
+import au.gov.health.covidsafe.streetpass.CentralDevice
+import au.gov.health.covidsafe.streetpass.PeripheralDevice
 
 class TracerApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
         AppContext = applicationContext
+        FeedbackModule.init(this)
     }
 
     companion object {
 
-        private val TAG = "TracerApp"
+        private const val TAG = "TracerApp"
         const val ORG = BuildConfig.ORG
+        const val protocolVersion = BuildConfig.PROTOCOL_VERSION
 
         lateinit var AppContext: Context
 
         fun thisDeviceMsg(): String {
             BluetoothMonitoringService.broadcastMessage?.let {
                 CentralLog.i(TAG, "Retrieved BM for storage: $it")
-
-                if (!it.isValidForCurrentTime()) {
-
-                    var fetch = TempIDManager.retrieveTemporaryID(AppContext)
-                    fetch?.let {
-                        CentralLog.i(TAG, "Grab New Temp ID")
-                        BluetoothMonitoringService.broadcastMessage = it
-                    }
-
-                    if (fetch == null) {
-                        CentralLog.e(TAG, "Failed to grab new Temp ID")
-                    }
-
-                }
+                return it
             }
-            return BluetoothMonitoringService.broadcastMessage?.tempID ?: "Missing TempID"
+
+            CentralLog.e(TAG, "No local Broadcast Message")
+            return BluetoothMonitoringService.broadcastMessage!!
         }
 
         fun asPeripheralDevice(): PeripheralDevice {
@@ -51,5 +43,6 @@ class TracerApp : Application() {
         fun asCentralDevice(): CentralDevice {
             return CentralDevice(Build.MODEL, "SELF")
         }
+
     }
 }

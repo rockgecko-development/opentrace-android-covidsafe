@@ -1,10 +1,10 @@
-package io.bluetrace.opentrace.boot
+package au.gov.health.covidsafe.boot
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import io.bluetrace.opentrace.Utils
-import io.bluetrace.opentrace.logging.CentralLog
+import au.gov.health.covidsafe.Utils
+import au.gov.health.covidsafe.logging.CentralLog
 
 class StartOnBootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -13,7 +13,6 @@ class StartOnBootReceiver : BroadcastReceiver() {
             CentralLog.d("StartOnBootReceiver", "boot completed received")
 
             try {
-                //can i try a scheduled service start here?
                 CentralLog.d("StartOnBootReceiver", "Attempting to start service")
                 Utils.scheduleStartMonitoringService(context, 500)
             } catch (e: Throwable) {

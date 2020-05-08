@@ -1,4 +1,4 @@
-package io.bluetrace.opentrace
+package au.gov.health.covidsafe
 
 import android.content.Intent
 import android.os.Bundle
@@ -10,13 +10,13 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.firebase.auth.FirebaseAuth
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.floatingactionbutton.FloatingActionButton
 import io.reactivex.Observable
 import io.reactivex.android.schedulers.AndroidSchedulers
 import io.reactivex.schedulers.Schedulers
-import kotlinx.android.synthetic.main.database_peek.*
-import io.bluetrace.opentrace.streetpass.persistence.StreetPassRecordStorage
-import io.bluetrace.opentrace.streetpass.view.RecordViewModel
+import au.gov.health.covidsafe.streetpass.persistence.StreetPassRecordStorage
+import au.gov.health.covidsafe.streetpass.view.RecordViewModel
 
 
 class PeekActivity : AppCompatActivity() {
@@ -30,43 +30,49 @@ class PeekActivity : AppCompatActivity() {
 
     private fun newPeek() {
         setContentView(R.layout.database_peek)
+        val recyclerView = findViewById<RecyclerView>(R.id.recyclerview)
         val adapter = RecordListAdapter(this)
-        recyclerview.adapter = adapter
+        recyclerView.adapter = adapter
         val layoutManager = LinearLayoutManager(this)
-        recyclerview.layoutManager = layoutManager
+        recyclerView.layoutManager = layoutManager
 
         val dividerItemDecoration = DividerItemDecoration(
-            recyclerview.context,
+            recyclerView.context,
             layoutManager.orientation
         )
-        recyclerview.addItemDecoration(dividerItemDecoration)
+        recyclerView.addItemDecoration(dividerItemDecoration)
 
         viewModel = ViewModelProvider(this).get(RecordViewModel::class.java)
         viewModel.allRecords.observe(this, Observer { records ->
             adapter.setSourceData(records)
         })
 
-        expand.setOnClickListener {
-            viewModel.allRecords.value?.let {
-                adapter.setMode(RecordListAdapter.MODE.ALL)
+        findViewById<FloatingActionButton>(R.id.expand)
+            .setOnClickListener {
+                viewModel.allRecords.value?.let {
+                    adapter.setMode(RecordListAdapter.MODE.ALL)
+                }
             }
-        }
 
-        collapse.setOnClickListener {
-            viewModel.allRecords.value?.let {
-                adapter.setMode(RecordListAdapter.MODE.COLLAPSE)
+        findViewById<FloatingActionButton>(R.id.collapse)
+            .setOnClickListener {
+                viewModel.allRecords.value?.let {
+                    adapter.setMode(RecordListAdapter.MODE.COLLAPSE)
+                }
             }
-        }
 
 
+        val start = findViewById<FloatingActionButton>(R.id.start)
         start.setOnClickListener {
             startService()
         }
 
+        val stop = findViewById<FloatingActionButton>(R.id.stop)
         stop.setOnClickListener {
             stopService()
         }
 
+        val delete = findViewById<FloatingActionButton>(R.id.delete)
         delete.setOnClickListener { view ->
             view.isEnabled = false
 
@@ -100,22 +106,19 @@ class PeekActivity : AppCompatActivity() {
 
         }
 
+        val plot = findViewById<FloatingActionButton>(R.id.plot)
         plot.setOnClickListener { view ->
             val intent = Intent(this, PlotActivity::class.java)
             intent.putExtra("time_period", nextTimePeriod())
             startActivity(intent)
         }
 
-        val uid = FirebaseAuth.getInstance().currentUser!!.uid
-        val serviceUUID = BuildConfig.BLE_SSID
-        info.text =
-            "UID: ${uid.substring(uid.length - 4)}   SSID: ${serviceUUID.substring(serviceUUID.length - 4)}"
-
-        if (!BuildConfig.DEBUG) {
+        if(!BuildConfig.DEBUG) {
             start.visibility = View.GONE
             stop.visibility = View.GONE
             delete.visibility = View.GONE
         }
+
     }
 
     private var timePeriod: Int = 0

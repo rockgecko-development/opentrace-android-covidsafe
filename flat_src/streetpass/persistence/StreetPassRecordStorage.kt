@@ -1,16 +1,24 @@
-package io.bluetrace.opentrace.streetpass.persistence
+package au.gov.health.covidsafe.streetpass.persistence
 
 import android.content.Context
 
 class StreetPassRecordStorage(val context: Context) {
 
-    val recordDao = StreetPassRecordDatabase.getDatabase(context).recordDao()
+    private val recordDao = StreetPassRecordDatabase.getDatabase(context).recordDao()
 
     suspend fun saveRecord(record: StreetPassRecord) {
         recordDao.insert(record)
     }
 
+    fun deleteDataOlderThan(timeInMs: Long): Int {
+        return recordDao.deleteDataOlder(timeInMs)
+    }
+
     fun nukeDb() {
+        recordDao.nukeDb()
+    }
+
+    suspend fun nukeDbAsync() {
         recordDao.nukeDb()
     }
 
@@ -18,7 +26,4 @@ class StreetPassRecordStorage(val context: Context) {
         return recordDao.getCurrentRecords()
     }
 
-    suspend fun purgeOldRecords(before: Long) {
-        recordDao.purgeOldRecords(before)
-    }
 }

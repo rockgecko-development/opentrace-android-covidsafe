@@ -1,4 +1,4 @@
-package io.bluetrace.opentrace.bluetooth
+package au.gov.health.covidsafe.bluetooth
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.le.BluetoothLeScanner
@@ -7,8 +7,8 @@ import android.bluetooth.le.ScanFilter
 import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.os.ParcelUuid
-import io.bluetrace.opentrace.Utils
-import io.bluetrace.opentrace.logging.CentralLog
+import au.gov.health.covidsafe.Utils
+import au.gov.health.covidsafe.logging.CentralLog
 import java.util.*
 import kotlin.collections.ArrayList
 import kotlin.properties.Delegates
@@ -41,19 +41,12 @@ class BLEScanner constructor(context: Context, uuid: String, reportDelay: Long) 
 
         val settings = ScanSettings.Builder()
             .setReportDelay(reportDelay)
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
             .build()
 
         this.scanCallback = scanCallback
-        //try to get a scanner if there isn't anything
         scanner = scanner ?: BluetoothAdapter.getDefaultAdapter().bluetoothLeScanner
         scanner?.startScan(filters, settings, scanCallback)
-    }
-
-    fun flush() {
-        scanCallback?.let {
-            scanner?.flushPendingScanResults(scanCallback)
-        }
     }
 
     fun stopScan() {
@@ -70,4 +63,5 @@ class BLEScanner constructor(context: Context, uuid: String, reportDelay: Long) 
             )
         }
     }
+
 }

@@ -1,10 +1,10 @@
-package io.bluetrace.opentrace.streetpass
+package au.gov.health.covidsafe.streetpass
 
 import android.content.Context
-import io.bluetrace.opentrace.bluetooth.gatt.GattServer
-import io.bluetrace.opentrace.bluetooth.gatt.GattService
+import au.gov.health.covidsafe.bluetooth.gatt.GattServer
+import au.gov.health.covidsafe.bluetooth.gatt.GattService
 
-class StreetPassServer constructor(val context: Context, val serviceUUIDString: String) {
+class StreetPassServer constructor(val context: Context, serviceUUIDString: String) {
 
     private val TAG = "StreetPassServer"
     private var gattServer: GattServer? = null
@@ -15,7 +15,7 @@ class StreetPassServer constructor(val context: Context, val serviceUUIDString: 
 
     private fun setupGattServer(context: Context, serviceUUIDString: String): GattServer? {
         val gattServer = GattServer(context, serviceUUIDString)
-        var started = gattServer.startServer()
+        val started = gattServer.startServer()
 
         if (started) {
             val readService = GattService(context, serviceUUIDString)
@@ -27,12 +27,6 @@ class StreetPassServer constructor(val context: Context, val serviceUUIDString: 
 
     fun tearDown() {
         gattServer?.stop()
-    }
-
-    fun checkServiceAvailable(): Boolean {
-        return gattServer?.bluetoothGattServer?.services?.filter {
-            it.uuid.toString().equals(serviceUUIDString)
-        }?.isNotEmpty() ?: false
     }
 
 }

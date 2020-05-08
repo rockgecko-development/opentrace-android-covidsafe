@@ -1,10 +1,10 @@
-package io.bluetrace.opentrace.receivers
+package au.gov.health.covidsafe.receivers
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import io.bluetrace.opentrace.Utils
-import io.bluetrace.opentrace.logging.CentralLog
+import au.gov.health.covidsafe.Utils
+import au.gov.health.covidsafe.logging.CentralLog
 
 class UpgradeReceiver : BroadcastReceiver() {
 
@@ -12,7 +12,6 @@ class UpgradeReceiver : BroadcastReceiver() {
 
         try {
             if (Intent.ACTION_MY_PACKAGE_REPLACED != intent!!.action) return
-            // Start your service here.
             context?.let {
                 CentralLog.i("UpgradeReceiver", "Starting service from upgrade receiver")
                 Utils.startBluetoothMonitoringService(context)

@@ -1,4 +1,4 @@
-package io.bluetrace.opentrace.streetpass.persistence
+package au.gov.health.covidsafe.streetpass.persistence
 
 import androidx.lifecycle.LiveData
 import androidx.room.*
@@ -16,15 +16,14 @@ interface StreetPassRecordDao {
     @Query("SELECT * from record_table ORDER BY timestamp ASC")
     fun getCurrentRecords(): List<StreetPassRecord>
 
+    @Query("DELETE FROM record_table WHERE timestamp <= :timeInMs")
+    fun deleteDataOlder(timeInMs: Long): Int
+
     @Query("DELETE FROM record_table")
     fun nukeDb()
 
-    @Query("DELETE FROM record_table WHERE timestamp < :before")
-    suspend fun purgeOldRecords(before: Long)
-
     @RawQuery
     fun getRecordsViaQuery(query: SupportSQLiteQuery): List<StreetPassRecord>
-
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(record: StreetPassRecord)

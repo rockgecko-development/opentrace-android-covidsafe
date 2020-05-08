@@ -1,40 +1,35 @@
-package io.bluetrace.opentrace
+package au.gov.health.covidsafe
 
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
+import android.provider.Settings
+import android.view.View
 import androidx.appcompat.app.AppCompatActivity
-import io.bluetrace.opentrace.onboarding.PreOnboardingActivity
+import au.gov.health.covidsafe.ui.onboarding.OnboardingActivity
+import java.util.*
 
 class SplashActivity : AppCompatActivity() {
 
     private val SPLASH_TIME: Long = 2000
-    var needToUpdateApp = false
+
+    private var retryProviderInstall: Boolean = false
+    private val ERROR_DIALOG_REQUEST_CODE = 1
+
+    private var updateFlag = false
 
     private lateinit var mHandler: Handler
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_splash)
+        hideSystemUI()
         mHandler = Handler()
 
-        //check if the intent was from notification and its a update notification
-        intent.extras?.let {
-            val notifEvent: String? = it.getString("event", null)
+        Preference.putDeviceID(this, Settings.Secure.getString(this.contentResolver,
+                Settings.Secure.ANDROID_ID))
 
-            notifEvent?.let {
-                if (it.equals("update")) {
-                    needToUpdateApp = true
-                    intent = Intent(Intent.ACTION_VIEW);
-                    //Copy App URL from Google Play Store.
-                    intent.data = Uri.parse(BuildConfig.STORE_URL)
-
-                    startActivity(intent)
-                    finish()
-                }
-            }
-        }
     }
 
     override fun onPause() {
@@ -44,7 +39,7 @@ class SplashActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (!needToUpdateApp) {
+        if (!updateFlag) {
             mHandler.postDelayed({
                 goToNextScreen()
                 finish()
@@ -53,10 +48,35 @@ class SplashActivity : AppCompatActivity() {
     }
 
     private fun goToNextScreen() {
-        if (!Preference.isOnBoarded(this)) {
-            startActivity(Intent(this, PreOnboardingActivity::class.java))
-        } else {
-            startActivity(Intent(this, MainActivity::class.java))
+        val dateUploaded = Calendar.getInstance().also {
+            it.timeInMillis = Preference.getDataUploadedDateMs(this)
         }
+        val fourteenDaysAgo = Calendar.getInstance().also {
+            it.add(Calendar.DATE, -14)
+        }
+        startActivity(Intent(this, if (!Preference.isOnBoarded(this)) {
+            OnboardingActivity::class.java
+        } else if (dateUploaded.before(fourteenDaysAgo)) {
+            SelfIsolationDoneActivity::class.java
+        } else {
+            HomeActivity::class.java
+        }))
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == ERROR_DIALOG_REQUEST_CODE) {
+            retryProviderInstall = true
+        }
+    }
+
+    // This snippet hides the system bars.
+    private fun hideSystemUI() {
+        window.decorView.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                        or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                        or View.SYSTEM_UI_FLAG_FULLSCREEN)
     }
 }

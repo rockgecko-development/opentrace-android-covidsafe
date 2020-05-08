@@ -1,7 +1,6 @@
-package io.bluetrace.opentrace
+package au.gov.health.covidsafe
 
 import android.Manifest
-import android.app.Activity
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.content.Context
@@ -9,29 +8,21 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
-import android.view.View
-import android.view.inputmethod.InputMethodManager
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
-import com.google.android.gms.tasks.Task
-import com.google.firebase.functions.FirebaseFunctions
-import com.google.firebase.functions.HttpsCallableResult
-import io.bluetrace.opentrace.bluetooth.gatt.*
-import io.bluetrace.opentrace.logging.CentralLog
-import io.bluetrace.opentrace.scheduler.Scheduler
-import io.bluetrace.opentrace.services.BluetoothMonitoringService
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.PENDING_ADVERTISE_REQ_CODE
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.PENDING_BM_UPDATE
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.PENDING_HEALTH_CHECK_CODE
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.PENDING_PURGE_CODE
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.PENDING_SCAN_REQ_CODE
-import io.bluetrace.opentrace.services.BluetoothMonitoringService.Companion.PENDING_START
-import io.bluetrace.opentrace.status.Status
-import io.bluetrace.opentrace.streetpass.ACTION_DEVICE_SCANNED
-import io.bluetrace.opentrace.streetpass.ConnectablePeripheral
-import io.bluetrace.opentrace.streetpass.ConnectionRecord
-import java.io.BufferedReader
-import java.io.FileInputStream
-import java.io.InputStreamReader
+import au.gov.health.covidsafe.bluetooth.gatt.*
+import au.gov.health.covidsafe.logging.CentralLog
+import au.gov.health.covidsafe.scheduler.Scheduler
+import au.gov.health.covidsafe.services.BluetoothMonitoringService
+import au.gov.health.covidsafe.services.BluetoothMonitoringService.Companion.PENDING_ADVERTISE_REQ_CODE
+import au.gov.health.covidsafe.services.BluetoothMonitoringService.Companion.PENDING_BM_UPDATE
+import au.gov.health.covidsafe.services.BluetoothMonitoringService.Companion.PENDING_HEALTH_CHECK_CODE
+import au.gov.health.covidsafe.services.BluetoothMonitoringService.Companion.PENDING_SCAN_REQ_CODE
+import au.gov.health.covidsafe.services.BluetoothMonitoringService.Companion.PENDING_START
+import au.gov.health.covidsafe.status.Status
+import au.gov.health.covidsafe.streetpass.ACTION_DEVICE_SCANNED
+import au.gov.health.covidsafe.streetpass.ConnectablePeripheral
+import au.gov.health.covidsafe.streetpass.ConnectionRecord
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -68,22 +59,11 @@ object Utils {
         return formatter.format(calendar.time)
     }
 
-    fun getTime(milliSeconds: Long): String {
-        val dateFormat = "h:mm a"
-        // Create a DateFormatter object for displaying date in specified format.
-        val formatter = SimpleDateFormat(dateFormat)
-
-        // Create a calendar object that will convert the date and time value in milliseconds to date.
-        val calendar = Calendar.getInstance()
-        calendar.timeInMillis = milliSeconds
-        return formatter.format(calendar.time)
-    }
-
     fun startBluetoothMonitoringService(context: Context) {
         val intent = Intent(context, BluetoothMonitoringService::class.java)
         intent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_START.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_START.index
         )
 
         context.startService(intent)
@@ -92,15 +72,15 @@ object Utils {
     fun scheduleStartMonitoringService(context: Context, timeInMillis: Long) {
         val intent = Intent(context, BluetoothMonitoringService::class.java)
         intent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_START.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_START.index
         )
 
         Scheduler.scheduleServiceIntent(
-            PENDING_START,
-            context,
-            intent,
-            timeInMillis
+                PENDING_START,
+                context,
+                intent,
+                timeInMillis
         )
     }
 
@@ -110,23 +90,23 @@ object Utils {
 
         val intent = Intent(context, BluetoothMonitoringService::class.java)
         intent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_UPDATE_BM.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_UPDATE_BM.index
         )
 
         Scheduler.scheduleServiceIntent(
-            PENDING_BM_UPDATE,
-            context,
-            intent,
-            bmCheckInterval
+                PENDING_BM_UPDATE,
+                context,
+                intent,
+                bmCheckInterval
         )
     }
 
     fun cancelBMUpdateCheck(context: Context) {
         val intent = Intent(context, BluetoothMonitoringService::class.java)
         intent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_UPDATE_BM.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_UPDATE_BM.index
         )
 
         Scheduler.cancelServiceIntent(PENDING_BM_UPDATE, context, intent)
@@ -135,66 +115,28 @@ object Utils {
     fun stopBluetoothMonitoringService(context: Context) {
         val intent = Intent(context, BluetoothMonitoringService::class.java)
         intent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_STOP.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_STOP.index
         )
         cancelNextScan(context)
         cancelNextHealthCheck(context)
         context.stopService(intent)
     }
 
-    fun scheduleNextScan(context: Context, timeInMillis: Long) {
-
-        //cancels any outstanding scan schedules.
-        cancelNextScan(context)
-
-        val nextIntent = Intent(context, BluetoothMonitoringService::class.java)
-        nextIntent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_SCAN.index
-        )
-        //runs every XXX milliseconds
-        Scheduler.scheduleServiceIntent(
-            PENDING_SCAN_REQ_CODE,
-            context,
-            nextIntent,
-            timeInMillis
-        )
-    }
-
     fun cancelNextScan(context: Context) {
         val nextIntent = Intent(context, BluetoothMonitoringService::class.java)
         nextIntent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_SCAN.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_SCAN.index
         )
         Scheduler.cancelServiceIntent(PENDING_SCAN_REQ_CODE, context, nextIntent)
-    }
-
-    fun scheduleNextAdvertise(context: Context, timeToNextAdvertise: Long) {
-
-        //cancels any outstanding scan schedules.
-        cancelNextAdvertise(context)
-
-        val nextIntent = Intent(context, BluetoothMonitoringService::class.java)
-        nextIntent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_ADVERTISE.index
-        )
-        //runs every XXX milliseconds
-        Scheduler.scheduleServiceIntent(
-            PENDING_ADVERTISE_REQ_CODE,
-            context,
-            nextIntent,
-            timeToNextAdvertise
-        )
     }
 
     fun cancelNextAdvertise(context: Context) {
         val nextIntent = Intent(context, BluetoothMonitoringService::class.java)
         nextIntent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_ADVERTISE.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_ADVERTISE.index
         )
         Scheduler.cancelServiceIntent(PENDING_ADVERTISE_REQ_CODE, context, nextIntent)
     }
@@ -205,46 +147,30 @@ object Utils {
 
         val nextIntent = Intent(context, BluetoothMonitoringService::class.java)
         nextIntent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_SELF_CHECK.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_SELF_CHECK.index
         )
-        //runs every XXX milliseconds - every minute?
         Scheduler.scheduleServiceIntent(
-            PENDING_HEALTH_CHECK_CODE,
-            context,
-            nextIntent,
-            timeInMillis
+                PENDING_HEALTH_CHECK_CODE,
+                context,
+                nextIntent,
+                timeInMillis
         )
     }
 
-    fun cancelNextHealthCheck(context: Context) {
+    private fun cancelNextHealthCheck(context: Context) {
         val nextIntent = Intent(context, BluetoothMonitoringService::class.java)
         nextIntent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_SELF_CHECK.index
+                BluetoothMonitoringService.COMMAND_KEY,
+                BluetoothMonitoringService.Command.ACTION_SELF_CHECK.index
         )
         Scheduler.cancelServiceIntent(PENDING_HEALTH_CHECK_CODE, context, nextIntent)
     }
 
-    fun scheduleRepeatingPurge(context: Context, intervalMillis: Long) {
-        val nextIntent = Intent(context, BluetoothMonitoringService::class.java)
-        nextIntent.putExtra(
-            BluetoothMonitoringService.COMMAND_KEY,
-            BluetoothMonitoringService.Command.ACTION_PURGE.index
-        )
-
-        Scheduler.scheduleRepeatingServiceIntent(
-            PENDING_PURGE_CODE,
-            context,
-            nextIntent,
-            intervalMillis
-        )
-    }
-
     fun broadcastDeviceScanned(
-        context: Context,
-        device: BluetoothDevice,
-        connectableBleDevice: ConnectablePeripheral
+            context: Context,
+            device: BluetoothDevice,
+            connectableBleDevice: ConnectablePeripheral
     ) {
         val intent = Intent(ACTION_DEVICE_SCANNED)
         intent.putExtra(BluetoothDevice.EXTRA_DEVICE, device)
@@ -277,74 +203,45 @@ object Utils {
         LocalBroadcastManager.getInstance(context).sendBroadcast(intent)
     }
 
-    fun readFromInternalStorage(context: Context, fileName: String): String {
-        CentralLog.d(TAG, "Reading from internal storage")
-        val fileInputStream: FileInputStream
-        var text: String? = null
-        val stringBuilder: StringBuilder = StringBuilder()
-        fileInputStream = context.openFileInput(fileName)
-        var inputStreamReader: InputStreamReader = InputStreamReader(fileInputStream)
-        val bufferedReader: BufferedReader = BufferedReader(inputStreamReader)
-        try {
-            while ({ text = bufferedReader.readLine(); text }() != null) {
-                CentralLog.d(TAG, "Text: " + text)
-                stringBuilder.append(text)
-            }
-
-            bufferedReader.close()
-
-        } catch (e: Throwable) {
-            CentralLog.e(TAG, "Failed to readFromInternalStorage: ${e.message}")
-        }
-        return stringBuilder.toString()
-    }
-
-    fun getDateFromUnix(unix_timestamp: Long): String? {
-        val sdf = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.ENGLISH)
-        val date = sdf.format(unix_timestamp)
-        return date.toString()
-    }
-
-    fun hideKeyboardFrom(
-        context: Context,
-        view: View
-    ) {
-        val imm = context.getSystemService(
-            Activity.INPUT_METHOD_SERVICE
-        ) as InputMethodManager
-        imm.hideSoftInputFromWindow(view.windowToken, 0)
-    }
-
-    fun showKeyboardFrom(
-        context: Context,
-        view: View?
-    ) {
-        val imm = context.getSystemService(
-            Activity.INPUT_METHOD_SERVICE
-        ) as InputMethodManager
-        imm.showSoftInput(view, InputMethodManager.SHOW_FORCED)
-    }
-
     fun isBluetoothAvailable(): Boolean {
         val bluetoothAdapter = BluetoothAdapter.getDefaultAdapter()
         return bluetoothAdapter != null &&
                 bluetoothAdapter.isEnabled && bluetoothAdapter.state == BluetoothAdapter.STATE_ON
     }
 
-    fun getHandShakePin(
-        context: Context,
-        functions: FirebaseFunctions
-    ): Task<HttpsCallableResult> {
-        return functions
-            .getHttpsCallable("getHandshakePin")
-            .call()
-            .addOnSuccessListener {
-                val result: HashMap<String, Any> = it.data as HashMap<String, Any>
-                val handShakePin = result["pin"].toString()
-                Preference.putHandShakePin(context, handShakePin)
-                CentralLog.d(TAG, "Result from handshake pin: " + result.toString())
-            }.addOnFailureListener { e ->
-                CentralLog.w(TAG, "get handshake pin (failure): ${e.message}")
-            }
+    fun storeBroadcastMessage(context: Context?, packet: String) {
+        CentralLog.d(TAG, "Storing packet into internal storage...")
+        val file = File(context?.filesDir, "packet")
+        file.writeText(packet)
+    }
+
+    fun retrieveBroadcastMessage(context: Context): String? {
+        val file = File(context.filesDir, "packet")
+        if (file.exists()) {
+            val readback = file.readText()
+            CentralLog.d(TAG, "fetched broadcastmessage from file:  $readback")
+            return readback
+        }
+        return null
+    }
+
+    fun needToUpdate(context: Context): Boolean {
+        val nextFetchTime = Preference.getNextFetchTimeInMillis(context)
+
+        val currentTime = System.currentTimeMillis()
+
+        val update = currentTime >= nextFetchTime
+        CentralLog.i(TAG, "Need to update BM? $nextFetchTime vs $currentTime: $update")
+        return update
+    }
+
+    fun bmValid(context: Context): Boolean {
+        val expiryTime = Preference.getExpiryTimeInMillis(context)
+        val currentTime = System.currentTimeMillis()
+
+        val update = currentTime < expiryTime
+        CentralLog.i(TAG, "Is BM Valid? $expiryTime vs $currentTime: $update")
+
+        return true
     }
 }
